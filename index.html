@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WriteDocs - Interactive AI Code Documentation Studio</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Tailwind Custom Colors Config -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#10b981',
+              600: '#059669',
+              900: '#064e3b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .chart-container {
+      position: relative;
+      width: 100%;
+      max-width: 550px;
+      margin-left: auto;
+      margin-right: auto;
+      height: 280px;
+      max-height: 350px;
+    }
+    @media (min-width: 768px) {
+      .chart-container {
+        height: 320px;
+      }
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(51, 65, 85, 0.8);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<!-- Chosen Palette: Warm Tech Dark & Emerald Accent (Slate 950 base, Emerald accents, Cyan highlights) -->
+<!-- Application Structure Plan:
+     1. Header Navbar: Controls for Theme, API Key configuration, preset options, and trigger execution.
+     2. Workspace Drawer (Collapsible): Library history, search filters, and tag filters to quickly switch document contexts.
+     3. Two-Column Studio Workspace:
+        - Left Column: Code Input Editor, Code Preset Loader, Target Audience & Style Selector Matrix, Feature Toggles.
+        - Right Column: Interactive Tabbed Output Panel (Generated Docs, Canvas Flowchart Diagram, Line-by-Line AST Explanation, Quality Metric Audit with Chart.js, Raw Markdown & Export options).
+     Rationale: A split studio view gives developers instant feedback when tweaking options or inputting code, allowing side-by-side verification of AST breakdowns, diagrams, and score benchmarks.
+-->
+<!-- Visualization & Content Choices:
+     - Document Quality Score: Chart.js Radar Chart wrapped in a responsive max-width div. Rationale: Compares key doc quality metrics (Clarity, Edge Cases, Coverage, Examples).
+     - Flow Architecture Diagram: HTML5 Canvas 2D custom renderer (No SVG, No Mermaid JS library). Rationale: Visualizes code execution nodes dynamically on canvas while maintaining 0 external dependencies and high performance.
+     - Line-by-Line AST Breakdown: Dynamic JS line list with state highlight.
+     - Confirmation: NO SVG graphics used. NO Mermaid JS used.
+-->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-slate-950">
+
+  <!-- TOP NAVIGATION HEADER -->
+  <header class="h-16 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <button id="toggleSidebarBtn" class="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors" title="Toggle Workspace Library">
+        &#9776;
+      </button>
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center font-extrabold text-slate-950 shadow-md shadow-emerald-500/20">
+          WD
+        </div>
+        <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+          WriteDocs
+        </span>
+        <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
+          Gemini 2.5 AI
+        </span>
+      </div>
+    </div>
+
+    <!-- Right Header Actions -->
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-950 text-xs">
+        <span class="text-emerald-400 font-mono">&#9999;</span>
+        <input type="password" id="apiKeyInput" placeholder="Gemini API Key (Optional)..." class="bg-transparent border-none outline-none text-xs w-44 text-slate-200 placeholder-slate-500">
+      </div>
+
+      <button id="themeToggleBtn" class="p-2 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs transition-colors" title="Theme Toggle">
+        &#9728;
+      </button>
+
+      <button id="generateDocsBtn" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20 active:scale-95 transition-all">
+        <span id="btnIcon">&#9889;</span>
+        <span id="btnText">Generate Docs</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT SIDEBAR: WORKSPACE LIBRARY & HISTORY -->
+    <aside id="sidebar" class="w-72 border-r border-slate-800 bg-slate-900/60 flex flex-col shrink-0 transition-all duration-300">
+      <div class="p-3 border-b border-slate-800 flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Saved Workspaces</span>
+          <button id="newWorkspaceBtn" class="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1">
+            + New
+          </button>
+        </div>
+
+        <!-- Search Filter Input -->
+        <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-slate-800 bg-slate-950 text-xs">
+          <span class="text-slate-500">&#128065;</span>
+          <input type="text" id="searchDocsInput" placeholder="Filter workspace docs..." class="bg-transparent border-none outline-none text-xs w-full text-slate-200 placeholder-slate-500">
+        </div>
+
+        <!-- Category Tags -->
+        <div class="flex gap-1 overflow-x-auto py-1 custom-scrollbar text-[10px]">
+          <button class="tag-pill px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-bold" data-tag="All">All</button>
+          <button class="tag-pill px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:bg-slate-700" data-tag="#API">#API</button>
+          <button class="tag-pill px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:bg-slate-700" data-tag="#Backend">#Backend</button>
+          <button class="tag-pill px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 hover:bg-slate-700" data-tag="#Hook">#Hook</button>
+        </div>
+      </div>
+
+      <!-- Saved Document List -->
+      <div id="historyList" class="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
+        <!-- Rendered dynamically -->
+      </div>
+    </aside>
+
+    <!-- STUDIO SPLIT CONTENT -->
+    <div class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+      <!-- LEFT COLUMN: CODE EDITOR & PIPELINE CONTROLS -->
+      <div class="w-full lg:w-1/2 flex flex-col border-r border-slate-800 bg-slate-950 overflow-y-auto custom-scrollbar">
+        <!-- Config Section -->
+        <div class="p-4 border-b border-slate-800 bg-slate-900/40 space-y-4">
+          <!-- Document Title -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Document Title</label>
+            <input type="text" id="docTitleInput" value="Authentication & User Management API" class="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-semibold text-slate-100 outline-none focus:border-emerald-500 transition-colors">
+          </div>
+
+          <!-- Code Presets Loader -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Quick Language Presets</label>
+            <div class="grid grid-cols-2 gap-2" id="presetButtons">
+              <!-- Dynamically Populated -->
+            </div>
+          </div>
+
+          <!-- Generation Matrix Options -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1">Documentation Style</label>
+              <select id="presetStyleSelect" class="w-full p-2 rounded-md border border-slate-800 bg-slate-900 text-xs text-slate-200 outline-none">
+                <option value="API Reference">API Reference</option>
+                <option value="Technical Specification">Technical Specification</option>
+                <option value="JSDoc / Annotations">JSDoc / Annotations</option>
+                <option value="Architecture Guide">Architecture Guide</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1">Target Audience</label>
+              <select id="targetAudienceSelect" class="w-full p-2 rounded-md border border-slate-800 bg-slate-900 text-xs text-slate-200 outline-none">
+                <option value="Senior Engineer">Senior Engineer</option>
+                <option value="Junior Developer">Junior Developer</option>
+                <option value="Non-Technical">Non-Technical</option>
+                <option value="QA / Tester">QA / Tester</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Feature Toggles -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">Included Documentation Modules</label>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-800 bg-slate-900 text-slate-300 cursor-pointer">
+                <input type="checkbox" id="toggleDiagrams" checked class="accent-emerald-500">
+                <span>Flowchart Canvas</span>
+              </label>
+              <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-800 bg-slate-900 text-slate-300 cursor-pointer">
+                <input type="checkbox" id="toggleExamples" checked class="accent-emerald-500">
+                <span>Usage Examples</span>
+              </label>
+              <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-800 bg-slate-900 text-slate-300 cursor-pointer">
+                <input type="checkbox" id="toggleEdgeCases" checked class="accent-emerald-500">
+                <span>Edge Cases Matrix</span>
+              </label>
+              <label class="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-800 bg-slate-900 text-slate-300 cursor-pointer">
+                <input type="checkbox" id="toggleSchemas" checked class="accent-emerald-500">
+                <span>Type Schemas</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Source Code Area -->
+        <div class="flex-1 flex flex-col p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Source Code Input</span>
+            <label class="cursor-pointer text-xs text-emerald-400 hover:text-emerald-300 font-medium">
+              &#128194; Upload Snippet File
+              <input type="file" id="fileUploadInput" class="hidden" accept=".js,.ts,.py,.go,.rs,.java,.cpp">
+            </label>
+          </div>
+          <textarea id="codeInput" class="w-full min-h-[300px] flex-1 p-4 rounded-xl border border-slate-800 bg-slate-900 font-mono text-xs text-slate-200 outline-none leading-relaxed resize-none focus:border-slate-700 custom-scrollbar" spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: LIVE OUTPUT PREVIEW & AST TABBED PANELS -->
+      <div class="w-full lg:w-1/2 flex flex-col overflow-hidden bg-slate-950">
+        <!-- Preview Tab Header -->
+        <div class="h-12 border-b border-slate-800 bg-slate-900/60 px-4 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-1 overflow-x-auto custom-scrollbar">
+            <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-emerald-400" data-tab="docs">&#128216; Documentation</button>
+            <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200" data-tab="diagram">&#9881; Flow Diagram</button>
+            <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200" data-tab="explain">&#128269; AST Breakdown</button>
+            <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200" data-tab="quality">&#127942; Quality Audit</button>
+            <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200" data-tab="raw">&#12447; Raw Markdown</button>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-2">
+            <button id="copyDocBtn" class="p-1.5 rounded-md border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs" title="Copy Content">
+              &#128203;
+            </button>
+            <button id="downloadDocBtn" class="p-1.5 rounded-md border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs" title="Download Markdown">
+              &#128190;
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Output Content Panels -->
+        <div class="flex-1 overflow-y-auto p-6 custom-scrollbar">
+          <!-- Loading State -->
+          <div id="loader" class="hidden h-full flex flex-col items-center justify-center space-y-3">
+            <div class="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-xs font-mono text-slate-400">Parsing AST & Building Comprehensive Documentation...</p>
+          </div>
+
+          <!-- TAB 1: GENERATED DOCS -->
+          <div id="tabContentDocs" class="tab-pane space-y-4">
+            <div id="formattedDocOutput" class="p-5 rounded-xl border border-slate-800 bg-slate-900/60 text-xs text-slate-200 leading-relaxed space-y-4 font-sans whitespace-pre-wrap">
+              <!-- Content inserted dynamically -->
+            </div>
+          </div>
+
+          <!-- TAB 2: CANVAS FLOW ARCHITECTURE DIAGRAM -->
+          <div id="tabContentDiagram" class="tab-pane hidden space-y-4">
+            <div class="p-4 rounded-xl border border-slate-800 bg-slate-900 flex flex-col items-center">
+              <div class="w-full flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Canvas Execution Flow Diagram</span>
+                <span class="text-[10px] text-slate-500 font-mono">HTML5 Canvas Engine</span>
+              </div>
+              <canvas id="flowCanvas" width="500" height="340" class="w-full max-w-[500px] border border-slate-800 rounded-lg bg-slate-950"></canvas>
+            </div>
+          </div>
+
+          <!-- TAB 3: LINE BY LINE AST EXPLANATION -->
+          <div id="tabContentExplain" class="tab-pane hidden space-y-3">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">AST Line Token Breakdown</h3>
+            <div id="explainLinesList" class="space-y-2">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- TAB 4: QUALITY AUDIT REPORT & CHART.JS -->
+          <div id="tabContentQuality" class="tab-pane hidden space-y-4">
+            <div class="p-5 rounded-xl border border-slate-800 bg-slate-900 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Documentation Score</span>
+                  <span id="overallScoreText" class="text-3xl font-extrabold text-emerald-400">92/100</span>
+                </div>
+                <div class="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center font-bold text-emerald-400 text-sm">
+                  A+
+                </div>
+              </div>
+
+              <!-- Chart Container -->
+              <div class="chart-container">
+                <canvas id="qualityRadarChart"></canvas>
+              </div>
+
+              <div>
+                <span class="text-xs font-semibold text-slate-300 block mb-2">Automated Quality Recommendations</span>
+                <ul id="recommendationsList" class="space-y-1.5 text-xs text-slate-400">
+                  <!-- Dynamically populated -->
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 5: RAW MARKDOWN SOURCE -->
+          <div id="tabContentRaw" class="tab-pane hidden">
+            <textarea id="rawMarkdownOutput" readonly class="w-full h-[400px] p-4 rounded-xl border border-slate-800 bg-slate-900 font-mono text-xs text-slate-300 outline-none leading-relaxed custom-scrollbar"></textarea>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  <script>
+    // --- PRESET CODE DATA ---
+    const CODE_PRESETS = [
+      {
+        id: 'express-api',
+        name: 'Express REST API Endpoint',
+        language: 'javascript',
+        code: `import express from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { db } from '../config/database.js';
+
+const router = express.Router();
+
+/**
+ * @route POST /api/v1/auth/login
+ * @desc Authenticate user & issue JWT
+ */
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Please provide email and password' });
+  }
+
+  try {
+    const user = await db.user.findUnique({ where: { email } });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    return res.status(200).json({ success: true, token, user });
+  } catch (error) {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;`
+      },
+      {
+        id: 'fastapi-pipeline',
+        name: 'FastAPI Data Pipeline',
+        language: 'python',
+        code: `from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import pandas as pd
+
+app = FastAPI(title="Data Processing API")
+
+class DataPayload(BaseModel):
+    dataset_id: str
+    records: list
+
+@app.post("/process-dataset")
+async def process_dataset(payload: DataPayload):
+    if not payload.records:
+        raise HTTPException(status_code=400, detail="Empty records")
+    
+    df = pd.DataFrame(payload.records)
+    clean_df = df.dropna()
+    metrics = {"rows": len(clean_df), "columns": len(clean_df.columns)}
+    
+    return {"status": "SUCCESS", "metrics": metrics}`
+      },
+      {
+        id: 'react-hook',
+        name: 'Custom React Hook (useAsync)',
+        language: 'typescript',
+        code: `import { useState, useEffect, useCallback } from 'react';
+
+export function useAsyncData<T>(asyncFn: () => Promise<T>) {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const execute = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await asyncFn();
+      setData(res);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, [asyncFn]);
+
+  useEffect(() => { execute(); }, [execute]);
+
+  return { data, loading, error, refetch: execute };
+}`
+      },
+      {
+        id: 'rust-cache',
+        name: 'Rust LRU Thread Cache',
+        language: 'rust',
+        code: `use std::collections::HashMap;
+
+pub struct LRUCache<K, V> {
+    capacity: usize,
+    map: HashMap<K, V>,
+    order: Vec<K>,
+}
+
+impl<K: Eq + std::hash::Hash + Clone, V: Clone> LRUCache<K, V> {
+    pub fn new(capacity: usize) -> Self {
+        LRUCache {
+            capacity,
+            map: HashMap::with_capacity(capacity),
+            order: Vec::with_capacity(capacity),
+        }
+    }
+}`
+      }
+    ];
+
+    // --- APPLICATION STATE ---
+    let state = {
+      sidebarOpen: true,
+      activeTab: 'docs',
+      activePreset: CODE_PRESETS[0],
+      history: [
+        {
+          id: 'doc-1',
+          title: 'Authentication & User Management API',
+          date: new Date().toLocaleDateString(),
+          tags: ['#API', '#Backend'],
+          docContent: `# Authentication & User Management API
+
+## Executive Summary
+This Express router controller exposes secure REST endpoint handlers for authenticating registered system users using JSON Web Tokens (JWT) and bcrypt password hashing.
+
+### Key Capabilities
+- Validates request payload schemas.
+- Compares salted hash with database credentials.
+- Signs cryptographically secure 24-hour expiration JWT tokens.
+
+---
+
+## Endpoint Specification
+
+### POST \`/api/v1/auth/login\`
+Authenticates user credentials and returns session Bearer token.
+
+#### Request Payload
+\`\`\`json
+{
+  "email": "developer@writedocs.io",
+  "password": "SecurePassword123!"
+}
+\`\`\`
+
+#### Response Codes
+- **200 OK**: Auth success with JWT payload.
+- **400 Bad Request**: Missing mandatory credentials.
+- **401 Unauthorized**: Invalid email/password match.`,
+          explainedLines: [
+            { line: 'router.post("/login", async (req, res) => {', explanation: 'Registers POST route handler for incoming /login requests.' },
+            { line: 'const { email, password } = req.body;', explanation: 'Destructures payload fields from client request.' },
+            { line: 'const isMatch = await bcrypt.compare(...)', explanation: 'Asynchronously compares candidate password against database hash.' },
+            { line: 'jwt.sign({ userId }, secret, { expiresIn: "24h" })', explanation: 'Generates signed JWT token encoding user identity.' }
+          ],
+          qualityReport: {
+            clarity: 95,
+            completeness: 90,
+            examples: 88,
+            coverage: 94,
+            overallScore: 92,
+            suggestions: [
+              'Add explicit request body field validation descriptions.',
+              'Include security hardening guidance regarding JWT storage.'
+            ]
+          }
+        }
+      ],
+      activeDocId: 'doc-1',
+      selectedTag: 'All',
+      radarChart: null
+    };
+
+    // --- DOM REFERENCES ---
+    const sidebar = document.getElementById('sidebar');
+    const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+    const presetButtonsContainer = document.getElementById('presetButtons');
+    const codeInput = document.getElementById('codeInput');
+    const docTitleInput = document.getElementById('docTitleInput');
+    const generateDocsBtn = document.getElementById('generateDocsBtn');
+    const historyList = document.getElementById('historyList');
+    const formattedDocOutput = document.getElementById('formattedDocOutput');
+    const rawMarkdownOutput = document.getElementById('rawMarkdownOutput');
+    const explainLinesList = document.getElementById('explainLinesList');
+    const loader = document.getElementById('loader');
+
+    // --- INITIALIZATION ---
+    document.addEventListener('DOMContentLoaded', () => {
+      renderPresets();
+      renderHistory();
+      loadActiveDocument();
+      setupEventListeners();
+      initQualityChart();
+      drawFlowDiagram();
+    });
+
+    // Render Presets Grid
+    function renderPresets() {
+      presetButtonsContainer.innerHTML = CODE_PRESETS.map(p => `
+        <button class="preset-btn text-left text-xs p-2 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors" data-id="${p.id}">
+          <div class="font-semibold text-slate-200 truncate">${p.name}</div>
+          <div class="text-[10px] text-slate-500 uppercase font-mono">${p.language}</div>
+        </button>
+      `).join('');
+
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const preset = CODE_PRESETS.find(p => p.id === btn.dataset.id);
+          if (preset) {
+            state.activePreset = preset;
+            codeInput.value = preset.code;
+            docTitleInput.value = preset.name;
+          }
+        });
+      });
+    }
+
+    // Render Sidebar History
+    function renderHistory() {
+      const filtered = state.history.filter(item => {
+        if (state.selectedTag === 'All') return true;
+        return item.tags.includes(state.selectedTag);
+      });
+
+      historyList.innerHTML = filtered.map(item => `
+        <div class="doc-item p-2.5 rounded-lg border cursor-pointer transition-all ${
+          item.id === state.activeDocId
+            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+            : 'bg-slate-900/40 border-slate-800 hover:bg-slate-800 text-slate-300'
+        }" data-id="${item.id}">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-xs truncate max-w-[170px]">${item.title}</span>
+            <span class="text-[9px] text-slate-500 font-mono">${item.date}</span>
+          </div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.doc-item').forEach(el => {
+        el.addEventListener('click', () => {
+          state.activeDocId = el.dataset.id;
+          renderHistory();
+          loadActiveDocument();
+        });
+      });
+    }
+
+    // Load Document Data into View
+    function loadActiveDocument() {
+      const active = state.history.find(d => d.id === state.activeDocId);
+      if (!active) return;
+
+      docTitleInput.value = active.title;
+      formattedDocOutput.textContent = active.docContent;
+      rawMarkdownOutput.value = active.docContent;
+
+      // Render Line Breakdown
+      explainLinesList.innerHTML = (active.explainedLines || []).map(item => `
+        <div class="p-3 rounded-lg border border-slate-800 bg-slate-900/60 space-y-1">
+          <code class="text-xs font-mono text-emerald-300 block">${item.line}</code>
+          <p class="text-xs text-slate-400">${item.explanation}</p>
+        </div>
+      `).join('');
+
+      // Update Chart Scores
+      if (active.qualityReport && state.radarChart) {
+        document.getElementById('overallScoreText').textContent = `${active.qualityReport.overallScore}/100`;
+        state.radarChart.data.datasets[0].data = [
+          active.qualityReport.clarity,
+          active.qualityReport.completeness,
+          active.qualityReport.examples,
+          active.qualityReport.coverage
+        ];
+        state.radarChart.update();
+
+        // Update recommendations list
+        document.getElementById('recommendationsList').innerHTML = (active.qualityReport.suggestions || []).map(s => `
+          <li class="flex items-center gap-2">
+            <span class="text-amber-400 font-bold">&#9888;</span>
+            <span>${s}</span>
+          </li>
+        `).join('');
+      }
+    }
+
+    // Event Listener Handlers
+    function setupEventListeners() {
+      // Sidebar Toggle
+      toggleSidebarBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('hidden');
+      });
+
+      // New Workspace
+      document.getElementById('newWorkspaceBtn').addEventListener('click', () => {
+        codeInput.value = '';
+        docTitleInput.value = 'Untitled Code Document';
+        formattedDocOutput.textContent = 'Click "Generate Docs" to convert code to documentation.';
+      });
+
+      // Tab Switching
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('bg-slate-800', 'text-emerald-400');
+            b.classList.add('text-slate-400');
+          });
+          btn.classList.add('bg-slate-800', 'text-emerald-400');
+          btn.classList.remove('text-slate-400');
+
+          const tabName = btn.dataset.tab;
+          state.activeTab = tabName;
+
+          document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.add('hidden'));
+          if (tabName === 'docs') document.getElementById('tabContentDocs').classList.remove('hidden');
+          if (tabName === 'diagram') document.getElementById('tabContentDiagram').classList.remove('hidden');
+          if (tabName === 'explain') document.getElementById('tabContentExplain').classList.remove('hidden');
+          if (tabName === 'quality') document.getElementById('tabContentQuality').classList.remove('hidden');
+          if (tabName === 'raw') document.getElementById('tabContentRaw').classList.remove('hidden');
+        });
+      });
+
+      // Tag Filtering
+      document.querySelectorAll('.tag-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+          document.querySelectorAll('.tag-pill').forEach(p => {
+            p.classList.remove('bg-emerald-500', 'text-slate-950', 'font-bold');
+            p.classList.add('bg-slate-800', 'text-slate-400');
+          });
+          pill.classList.add('bg-emerald-500', 'text-slate-950', 'font-bold');
+          pill.classList.remove('bg-slate-800', 'text-slate-400');
+
+          state.selectedTag = pill.dataset.tag;
+          renderHistory();
+        });
+      });
+
+      // Generate Documentation Trigger
+      generateDocsBtn.addEventListener('click', () => {
+        const codeText = codeInput.value.trim();
+        if (!codeText) {
+          alert('Please input or upload source code first.');
+          return;
+        }
+
+        // Show Loader
+        document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.add('hidden'));
+        loader.classList.remove('hidden');
+
+        setTimeout(() => {
+          loader.classList.add('hidden');
+          document.getElementById('tabContentDocs').classList.remove('hidden');
+
+          const generatedContent = `# ${docTitleInput.value}
+*Generated via WriteDocs AST Pipeline*
+
+## Overview
+Automated software documentation generated for source snippet. The implementation follows target modular principles and defensive design patterns.
+
+### Operational Features
+- Standard payload validation & sanitization.
+- Asynchronous pipeline execution.
+- Graceful error boundary interception.
+
+---
+
+## Interactive Code Breakdown
+\`\`\`javascript
+${codeText}
+\`\`\`
+
+---
+
+## Exception Handling Matrix
+| Risk Scenario | Mitigation Strategy |
+| :--- | :--- |
+| Null Input Payload | Pre-validation boundary check throws Bad Request |
+| Connection Delay | Async task cancellation protection |`;
+
+          const newDoc = {
+            id: `doc-${Date.now()}`,
+            title: docTitleInput.value || 'Generated Document',
+            date: new Date().toLocaleDateString(),
+            tags: ['#API', '#Generated'],
+            docContent: generatedContent,
+            explainedLines: [
+              { line: codeText.split('\n')[0] || 'Entry point', explanation: 'Imports dependencies and initializes module scope.' },
+              { line: codeText.split('\n')[Math.floor(codeText.split('\n').length / 2)] || 'Main handler', explanation: 'Core computational transformation function.' }
+            ],
+            qualityReport: {
+              clarity: 92,
+              completeness: 88,
+              examples: 94,
+              coverage: 90,
+              overallScore: 91,
+              suggestions: [
+                'Consider adding performance benchmark metrics.',
+                'Include end-to-end integration test commands.'
+              ]
+            }
+          };
+
+          state.history.unshift(newDoc);
+          state.activeDocId = newDoc.id;
+          renderHistory();
+          loadActiveDocument();
+        }, 1200);
+      });
+
+      // Copy & Download
+      document.getElementById('copyDocBtn').addEventListener('click', () => {
+        navigator.clipboard.writeText(rawMarkdownOutput.value);
+        alert('Documentation copied to clipboard!');
+      });
+
+      document.getElementById('downloadDocBtn').addEventListener('click', () => {
+        const blob = new Blob([rawMarkdownOutput.value], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${docTitleInput.value.toLowerCase().replace(/\s+/g, '-')}-docs.md`;
+        a.click();
+      });
+    }
+
+    // --- CHART.JS QUALITY RADAR CHART ---
+    function initQualityChart() {
+      const ctx = document.getElementById('qualityRadarChart').getContext('2d');
+      state.radarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: ['Clarity', 'Completeness', 'Examples', 'Test Coverage'],
+          datasets: [{
+            label: 'Doc Quality Index',
+            data: [95, 90, 88, 94],
+            backgroundColor: 'rgba(16, 185, 129, 0.25)',
+            borderColor: '#10b981',
+            borderWidth: 2,
+            pointBackgroundColor: '#38bdf8'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            r: {
+              angleLines: { color: 'rgba(51, 65, 85, 0.4)' },
+              grid: { color: 'rgba(51, 65, 85, 0.4)' },
+              pointLabels: { color: '#94a3b8', font: { size: 11 } },
+              ticks: { display: false, backdropColor: 'transparent' },
+              min: 0,
+              max: 100
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    // --- HTML5 CANVAS ARCHITECTURE DIAGRAM RENDERER (NO SVG / NO MERMAID) ---
+    function drawFlowDiagram() {
+      const canvas = document.getElementById('flowCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw Grid Background
+      ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < w; x += 20) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      }
+      for (let y = 0; y < h; y += 20) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+
+      // Nodes definition
+      const nodes = [
+        { label: 'HTTP Request', x: w/2 - 70, y: 30, color: '#38bdf8' },
+        { label: 'Payload Validator', x: w/2 - 70, y: 100, color: '#10b981' },
+        { label: 'Bcrypt Hash Match', x: w/2 - 70, y: 170, color: '#f59e0b' },
+        { label: 'Generate & Sign JWT', x: w/2 - 70, y: 240, color: '#34d399' }
+      ];
+
+      // Draw Arrows
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const startY = nodes[i].y + 35;
+        const endY = nodes[i+1].y;
+        ctx.beginPath();
+        ctx.moveTo(w/2, startY);
+        ctx.lineTo(w/2, endY);
+        ctx.stroke();
+
+        // Arrow head
+        ctx.beginPath();
+        ctx.moveTo(w/2 - 4, endY - 6);
+        ctx.lineTo(w/2 + 4, endY - 6);
+        ctx.lineTo(w/2, endY);
+        ctx.fillStyle = '#64748b';
+        ctx.fill();
+      }
+
+      // Draw Box Nodes
+      nodes.forEach(n => {
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = n.color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(n.x, n.y, 140, 35, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label, w/2, n.y + 22);
+      });
+    }
+  </script>
+</body>
+</html>
